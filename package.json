@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
-    "build": "tsc -p .",
+    "build": "tsc -p . && node -e \"require('fs').cpSync('src/db/schema.sql','dist/db/schema.sql')\"",
     "deploy-commands": "tsx src/discord/deploy-commands.ts",
     "typecheck": "tsc -p . --noEmit"
   },
