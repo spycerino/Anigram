@@ -4,10 +4,11 @@ import { dirname, join } from "node:path";
 import { Events } from "discord.js";
 import { config } from "./config.js";
 import { AnigramClient } from "./discord/client.js";
-import "./db/index.js"; // initialize DB + run schema
+import { db } from "./db/index.js"; // initialize DB + run schema
 import { startReminderScheduler } from "./services/reminders.js";
 import { startRolloverScheduler } from "./services/rollover.js";
 import { handleBacklogButton } from "./discord/components/backlog.js";
+import { handleSeasonButton } from "./discord/components/season.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -25,10 +26,13 @@ async function main() {
   const client = new AnigramClient();
   await loadCommands(client);
 
+  let reminderHandle: NodeJS.Timeout | undefined;
+  let rolloverHandle: NodeJS.Timeout | undefined;
+
   client.once(Events.ClientReady, (c) => {
     console.log(`Logged in as ${c.user.tag}`);
-    startReminderScheduler(c);
-    startRolloverScheduler();
+    reminderHandle = startReminderScheduler(c);
+    rolloverHandle = startRolloverScheduler();
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -42,6 +46,8 @@ async function main() {
       } else if (interaction.isButton()) {
         if (interaction.customId.startsWith("backlog:")) {
           await handleBacklogButton(interaction);
+        } else if (interaction.customId.startsWith("season:")) {
+          await handleSeasonButton(interaction);
         }
       }
     } catch (err) {
@@ -53,6 +59,29 @@ async function main() {
   });
 
   await client.login(config.discordToken);
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\nReceived ${signal}, shutting down...`);
+    if (reminderHandle) clearInterval(reminderHandle);
+    if (rolloverHandle) clearInterval(rolloverHandle);
+    try {
+      await client.destroy();
+    } catch (err) {
+      console.error("error closing discord client:", err);
+    }
+    try {
+      db.close();
+    } catch (err) {
+      console.error("error closing db:", err);
+    }
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 main().catch((err) => {

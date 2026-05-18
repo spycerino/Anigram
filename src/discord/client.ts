@@ -11,7 +11,7 @@ export class AnigramClient extends Client {
 
   constructor() {
     super({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+      intents: [GatewayIntentBits.Guilds],
     });
   }
 }

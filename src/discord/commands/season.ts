@@ -1,4 +1,11 @@
-import { EmbedBuilder, SlashCommandBuilder, type ChatInputCommandInteraction } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  SlashCommandBuilder,
+  type ChatInputCommandInteraction,
+} from "discord.js";
 import { fetchCurrentSeason, displayTitle } from "../../anilist/seasonShows.js";
 import { seasonForDate } from "../../anilist/season.js";
 
@@ -14,12 +21,14 @@ const data = new SlashCommandBuilder()
       .addIntegerOption((o) => o.setName("page").setDescription("Page number (1-based)"))
   );
 
-async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  await interaction.deferReply();
-  const page = Math.max(1, interaction.options.getInteger("page") ?? 1);
+export async function renderSeasonPage(page: number): Promise<{
+  embed: EmbedBuilder;
+  components: ActionRowBuilder<ButtonBuilder>[];
+}> {
   const shows = await fetchCurrentSeason();
   const totalPages = Math.max(1, Math.ceil(shows.length / PAGE_SIZE));
-  const slice = shows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const clamped = Math.min(Math.max(1, page), totalPages);
+  const slice = shows.slice((clamped - 1) * PAGE_SIZE, clamped * PAGE_SIZE);
   const { season, year } = seasonForDate();
 
   const lines = slice.map((m) => {
@@ -30,11 +39,36 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
   });
 
   const embed = new EmbedBuilder()
-    .setTitle(`${season} ${year} — page ${page}/${totalPages}`)
+    .setTitle(`${season} ${year} — page ${clamped}/${totalPages}`)
     .setDescription(lines.join("\n") || "No shows found.")
-    .setFooter({ text: `${shows.length} shows • use /season list page:<n>` });
+    .setFooter({ text: `${shows.length} shows` });
 
-  await interaction.editReply({ embeds: [embed] });
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`season:page:${clamped - 1}`)
+      .setLabel("◀ Prev")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(clamped <= 1),
+    new ButtonBuilder()
+      .setCustomId("season:noop")
+      .setLabel(`${clamped} / ${totalPages}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(`season:page:${clamped + 1}`)
+      .setLabel("Next ▶")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(clamped >= totalPages)
+  );
+
+  return { embed, components: [row] };
+}
+
+async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply();
+  const page = Math.max(1, interaction.options.getInteger("page") ?? 1);
+  const { embed, components } = await renderSeasonPage(page);
+  await interaction.editReply({ embeds: [embed], components });
 }
 
 export default { data, execute };
