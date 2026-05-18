@@ -17,7 +17,9 @@ const data = new SlashCommandBuilder()
       .setDescription("Mark an episode watched.")
       .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
       .addStringOption((o) => o.setName("show").setDescription("Show").setRequired(true).setAutocomplete(true))
-      .addIntegerOption((o) => o.setName("episode").setDescription("Episode number").setRequired(true))
+      .addIntegerOption((o) =>
+        o.setName("episode").setDescription("Episode number").setRequired(true).setMinValue(1)
+      )
   )
   .addSubcommand((s) =>
     s
@@ -25,7 +27,9 @@ const data = new SlashCommandBuilder()
       .setDescription("Mark an episode unwatched (manual fix).")
       .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
       .addStringOption((o) => o.setName("show").setDescription("Show").setRequired(true).setAutocomplete(true))
-      .addIntegerOption((o) => o.setName("episode").setDescription("Episode number").setRequired(true))
+      .addIntegerOption((o) =>
+        o.setName("episode").setDescription("Episode number").setRequired(true).setMinValue(1)
+      )
   );
 
 async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
