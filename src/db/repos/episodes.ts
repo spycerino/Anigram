@@ -40,6 +40,14 @@ const insertReminderLog = db.prepare<[number, number, number, number]>(
 const listEpisodes = db.prepare<[number, number]>(
   `SELECT * FROM episodes WHERE group_id = ? AND media_id = ? ORDER BY episode_number`
 );
+const markWatchedUpToStmt = db.prepare<[number, number, number, number, number]>(
+  `UPDATE episodes
+     SET watched = 1, watched_at = ?
+   WHERE group_id = ? AND media_id = ?
+     AND episode_number <= ?
+     AND aired_at <= ?
+     AND watched = 0`
+);
 
 export interface BacklogRow extends Episode {
   title: string;
@@ -57,6 +65,11 @@ export const episodesRepo = {
       mediaId,
       episode
     );
+  },
+  markWatchedUpTo(groupId: number, mediaId: number, episode: number): number {
+    const now = Math.floor(Date.now() / 1000);
+    const info = markWatchedUpToStmt.run(now, groupId, mediaId, episode, now);
+    return info.changes;
   },
   get(groupId: number, mediaId: number, episode: number): Episode | undefined {
     return getOne.get(groupId, mediaId, episode) as Episode | undefined;

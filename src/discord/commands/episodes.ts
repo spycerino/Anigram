@@ -14,11 +14,16 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s
       .setName("mark")
-      .setDescription("Mark an episode watched.")
+      .setDescription("Mark an episode watched (and all earlier aired episodes by default).")
       .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
       .addStringOption((o) => o.setName("show").setDescription("Show").setRequired(true).setAutocomplete(true))
       .addIntegerOption((o) =>
         o.setName("episode").setDescription("Episode number").setRequired(true).setMinValue(1)
+      )
+      .addBooleanOption((o) =>
+        o
+          .setName("only-this")
+          .setDescription("Mark only this episode, not earlier ones (default: false)")
       )
   )
   .addSubcommand((s) =>
@@ -59,11 +64,35 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
     await interaction.reply({ content: `Episode ${episode} of **${show.title}** is not tracked.`, ephemeral: true });
     return;
   }
-  episodesRepo.setWatched(r.group.id, mediaId, episode, sub === "mark");
-  await interaction.reply({
-    content: `${sub === "mark" ? "Marked" : "Unmarked"} **${show.title}** episode ${episode}.`,
-    ephemeral: true,
-  });
+
+  if (sub === "unmark") {
+    episodesRepo.setWatched(r.group.id, mediaId, episode, false);
+    await interaction.reply({
+      content: `Unmarked **${show.title}** episode ${episode}.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // sub === "mark"
+  const onlyThis = interaction.options.getBoolean("only-this") ?? false;
+  if (onlyThis) {
+    episodesRepo.setWatched(r.group.id, mediaId, episode, true);
+    await interaction.reply({
+      content: `Marked **${show.title}** episode ${episode}.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const changed = episodesRepo.markWatchedUpTo(r.group.id, mediaId, episode);
+  const suffix =
+    changed === 0
+      ? `Already caught up through episode ${episode} of **${show.title}**.`
+      : changed === 1
+        ? `Marked **${show.title}** episode ${episode}.`
+        : `Marked **${show.title}** through episode ${episode} (${changed} episodes).`;
+  await interaction.reply({ content: suffix, ephemeral: true });
 }
 
 async function autocomplete(interaction: AutocompleteInteraction): Promise<void> {

@@ -54,11 +54,11 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
   for (const [mediaId, { title, episodes }] of grouped) {
     lines.push(`**${title}** — eps ${episodes.join(", ")}`);
     if (r.canEdit && buttons.length < 5) {
-      const firstEp = episodes[0]!;
+      const latestEp = episodes[episodes.length - 1]!;
       buttons.push(
         new ButtonBuilder()
-          .setCustomId(`backlog:mark:${r.group.id}:${mediaId}:${firstEp}`)
-          .setLabel(`Mark ${title.slice(0, 30)} ep ${firstEp}`)
+          .setCustomId(`backlog:catchup:${r.group.id}:${mediaId}:${latestEp}`)
+          .setLabel(`Catch up ${title.slice(0, 30)}`)
           .setStyle(ButtonStyle.Secondary)
       );
     }
