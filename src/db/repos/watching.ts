@@ -30,6 +30,9 @@ const listAiring = db.prepare(
 const setTag = db.prepare<[number, number, number]>(
   `UPDATE watching SET tag_on_reminder = ? WHERE group_id = ? AND media_id = ?`
 );
+const setTagAll = db.prepare<[number, number]>(
+  `UPDATE watching SET tag_on_reminder = ? WHERE group_id = ?`
+);
 const setStatusStmt = db.prepare<[WatchStatus, number, number]>(
   `UPDATE watching SET status = ? WHERE group_id = ? AND media_id = ?`
 );
@@ -52,6 +55,10 @@ export const watchingRepo = {
   },
   setTagOnReminder(groupId: number, mediaId: number, enabled: boolean): void {
     setTag.run(enabled ? 1 : 0, groupId, mediaId);
+  },
+  setTagOnReminderForGroup(groupId: number, enabled: boolean): number {
+    const info = setTagAll.run(enabled ? 1 : 0, groupId);
+    return info.changes;
   },
   setStatus(groupId: number, mediaId: number, status: WatchStatus): void {
     setStatusStmt.run(status, groupId, mediaId);
