@@ -12,3 +12,10 @@ db.pragma("foreign_keys = ON");
 
 const schema = readFileSync(join(here, "schema.sql"), "utf8");
 db.exec(schema);
+
+// Migrations — safe to re-run (ALTER TABLE errors if column exists, which we swallow).
+try {
+  db.exec(`ALTER TABLE groups ADD COLUMN is_personal INTEGER NOT NULL DEFAULT 0`);
+} catch {
+  // column already exists
+}

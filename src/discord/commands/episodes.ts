@@ -3,7 +3,7 @@ import {
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { ensure, resolveGroup } from "../../services/permissions.js";
+import { ensure, resolveGroupOrPersonal } from "../../services/permissions.js";
 import { watchingRepo } from "../../db/repos/watching.js";
 import { episodesRepo } from "../../db/repos/episodes.js";
 
@@ -15,7 +15,6 @@ const data = new SlashCommandBuilder()
     s
       .setName("mark")
       .setDescription("Mark an episode watched (and all earlier aired episodes by default).")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
       .addStringOption((o) => o.setName("show").setDescription("Show").setRequired(true).setAutocomplete(true))
       .addIntegerOption((o) =>
         o.setName("episode").setDescription("Episode number").setRequired(true).setMinValue(1)
@@ -25,16 +24,17 @@ const data = new SlashCommandBuilder()
           .setName("only-this")
           .setDescription("Mark only this episode, not earlier ones (default: false)")
       )
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   )
   .addSubcommand((s) =>
     s
       .setName("unmark")
       .setDescription("Mark an episode unwatched (manual fix).")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
       .addStringOption((o) => o.setName("show").setDescription("Show").setRequired(true).setAutocomplete(true))
       .addIntegerOption((o) =>
         o.setName("episode").setDescription("Episode number").setRequired(true).setMinValue(1)
       )
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   );
 
 async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -43,14 +43,17 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
     return;
   }
   const sub = interaction.options.getSubcommand();
-  const groupName = interaction.options.getString("group", true);
-  const r = resolveGroup(interaction.guildId, groupName, interaction.user.id);
+  const groupName = interaction.options.getString("group");
+  const r = resolveGroupOrPersonal(interaction.guildId, groupName, interaction.user.id);
   if (!r) {
     await interaction.reply({ content: `Group **${groupName}** not found.`, ephemeral: true });
     return;
   }
-  const err = ensure(r, "editor");
-  if (err) return void interaction.reply({ content: err, ephemeral: true });
+  const isPersonal = r.group.is_personal === 1;
+  if (!isPersonal) {
+    const err = ensure(r, "editor");
+    if (err) return void interaction.reply({ content: err, ephemeral: true });
+  }
 
   const mediaId = Number(interaction.options.getString("show", true));
   const episode = interaction.options.getInteger("episode", true);
@@ -112,8 +115,7 @@ async function autocomplete(interaction: AutocompleteInteraction): Promise<void>
   }
   if (focused.name === "show") {
     const groupName = interaction.options.getString("group");
-    if (!groupName) return interaction.respond([]);
-    const r = resolveGroup(guildId, groupName, interaction.user.id);
+    const r = resolveGroupOrPersonal(guildId, groupName, interaction.user.id);
     if (!r) return interaction.respond([]);
     const shows = watchingRepo.listForGroup(r.group.id);
     await interaction.respond(

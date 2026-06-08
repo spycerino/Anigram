@@ -7,7 +7,7 @@ import {
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { ensure, resolveGroup } from "../../services/permissions.js";
+import { ensure, resolveGroupOrPersonal } from "../../services/permissions.js";
 import { episodesRepo } from "../../db/repos/episodes.js";
 import { groupsRepo } from "../../db/repos/groups.js";
 
@@ -19,7 +19,7 @@ const data = new SlashCommandBuilder()
     s
       .setName("list")
       .setDescription("List the backlog.")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   );
 
 async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -27,18 +27,22 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
     await interaction.reply({ content: "Use this in a server.", ephemeral: true });
     return;
   }
-  const groupName = interaction.options.getString("group", true);
-  const r = resolveGroup(interaction.guildId, groupName, interaction.user.id);
+  const groupName = interaction.options.getString("group");
+  const r = resolveGroupOrPersonal(interaction.guildId, groupName, interaction.user.id);
   if (!r) {
     await interaction.reply({ content: `Group **${groupName}** not found.`, ephemeral: true });
     return;
   }
-  const err = ensure(r, "member");
-  if (err) return void interaction.reply({ content: err, ephemeral: true });
+  const isPersonal = r.group.is_personal === 1;
+  if (!isPersonal) {
+    const err = ensure(r, "member");
+    if (err) return void interaction.reply({ content: err, ephemeral: true });
+  }
 
   const rows = episodesRepo.backlog(r.group.id);
   if (!rows.length) {
-    await interaction.reply({ content: `**${r.group.name}** is fully caught up.`, ephemeral: true });
+    const displayName = isPersonal ? "Your personal list" : r.group.name;
+    await interaction.reply({ content: `**${displayName}** is fully caught up.`, ephemeral: true });
     return;
   }
 
@@ -63,7 +67,8 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
       );
     }
   }
-  const embed = new EmbedBuilder().setTitle(`Backlog — ${r.group.name}`).setDescription(lines.join("\n"));
+  const backlogTitle = isPersonal ? "Your Backlog" : `Backlog — ${r.group.name}`;
+  const embed = new EmbedBuilder().setTitle(backlogTitle).setDescription(lines.join("\n"));
   const components = buttons.length
     ? [new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)]
     : [];

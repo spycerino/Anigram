@@ -13,4 +13,5 @@
 12. manually edit watched and unwatched episodes in case of mistakes? (needs edit perms) (possible feature, needs thought on possible implementation
 13. update list every season automatically 
 14. manage overlap between seasons
-
+15. add option to toggle ping for all shows in list instead of individually
+16. add option to add multiple shows to list at once

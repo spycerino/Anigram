@@ -25,7 +25,7 @@ async function runReminderTick(client: Client): Promise<void> {
   const due = episodesRepo.dueForReminder(now - LOOKBACK_SEC, now);
   for (const ep of due) {
     const group = groupsRepo.byId(ep.group_id);
-    if (!group || !group.notification_channel_id) {
+    if (!group) {
       episodesRepo.markReminderSent(ep.group_id, ep.media_id, ep.episode_number);
       continue;
     }
@@ -34,7 +34,24 @@ async function runReminderTick(client: Client): Promise<void> {
       episodesRepo.markReminderSent(ep.group_id, ep.media_id, ep.episode_number);
       continue;
     }
+
     try {
+      if (group.is_personal) {
+        // Personal group → DM the creator
+        const user = await client.users.fetch(group.creator_id);
+        const dm = await user.createDM();
+        await dm.send({
+          content: `**${show.title}** — episode ${ep.episode_number} is airing <t:${ep.aired_at}:R>.`,
+        });
+        episodesRepo.markReminderSent(ep.group_id, ep.media_id, ep.episode_number);
+        continue;
+      }
+
+      // Regular group → send to notification channel
+      if (!group.notification_channel_id) {
+        episodesRepo.markReminderSent(ep.group_id, ep.media_id, ep.episode_number);
+        continue;
+      }
       const channel = await client.channels.fetch(group.notification_channel_id);
       if (!channel || channel.type !== ChannelType.GuildText) {
         episodesRepo.markReminderSent(ep.group_id, ep.media_id, ep.episode_number);

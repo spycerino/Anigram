@@ -19,6 +19,22 @@ export function resolveGroup(guildId: string, groupName: string, userId: string)
   };
 }
 
+/** Resolve by group name if given, or fall back to the user's personal group (auto-created). */
+export function resolveGroupOrPersonal(
+  guildId: string,
+  groupName: string | null,
+  userId: string
+): ResolvedGroup | undefined {
+  if (groupName) return resolveGroup(guildId, groupName, userId);
+  const group = groupsRepo.getOrCreatePersonal(guildId, userId);
+  return {
+    group,
+    isCreator: true,
+    isMember: true,
+    canEdit: true,
+  };
+}
+
 export type PermLevel = "member" | "editor" | "creator";
 
 export function ensure(r: ResolvedGroup, level: PermLevel): string | null {

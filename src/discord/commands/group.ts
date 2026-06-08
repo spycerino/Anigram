@@ -86,6 +86,10 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
 
   if (sub === "create") {
     const name = interaction.options.getString("name", true).trim();
+    if (name.startsWith("__personal__")) {
+      await interaction.reply({ content: "That name is reserved.", ephemeral: true });
+      return;
+    }
     if (groupsRepo.byName(guildId, name)) {
       await interaction.reply({ content: `A group named **${name}** already exists.`, ephemeral: true });
       return;

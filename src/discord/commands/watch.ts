@@ -4,7 +4,7 @@ import {
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
-import { ensure, resolveGroup } from "../../services/permissions.js";
+import { ensure, resolveGroupOrPersonal } from "../../services/permissions.js";
 import { watchingRepo } from "../../db/repos/watching.js";
 import { episodesRepo } from "../../db/repos/episodes.js";
 import { searchMediaInCurrentSeason, displayTitle } from "../../anilist/seasonShows.js";
@@ -19,40 +19,40 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s
       .setName("add")
-      .setDescription("Add a show from the current season (edit perm).")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
+      .setDescription("Add a show from the current season.")
       .addStringOption((o) =>
         o.setName("show").setDescription("Show (search current season)").setRequired(true).setAutocomplete(true)
       )
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   )
   .addSubcommand((s) =>
     s
       .setName("add-many")
-      .setDescription("Add multiple shows from the current season at once (edit perm).")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
+      .setDescription("Add multiple shows from the current season at once.")
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   )
   .addSubcommand((s) =>
     s
       .setName("remove")
-      .setDescription("Remove a show from the watching list (edit perm).")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
+      .setDescription("Remove a show from the watching list.")
       .addStringOption((o) =>
         o.setName("show").setDescription("Show to remove").setRequired(true).setAutocomplete(true)
       )
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   )
   .addSubcommand((s) =>
     s
       .setName("list")
-      .setDescription("Show what a group is watching.")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
+      .setDescription("Show what you're watching.")
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   )
   .addSubcommand((s) =>
     s
       .setName("tag-on-reminder")
-      .setDescription("Toggle tagging group members on reminders for a show (edit perm).")
-      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
+      .setDescription("Toggle DM reminders for a show.")
       .addStringOption((o) => o.setName("show").setDescription("Show").setRequired(true).setAutocomplete(true))
       .addBooleanOption((o) => o.setName("enabled").setDescription("Enable tagging").setRequired(true))
+      .addStringOption((o) => o.setName("group").setDescription("Group (omit for personal list)").setAutocomplete(true))
   );
 
 async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -63,21 +63,23 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
   const guildId = interaction.guildId;
   const userId = interaction.user.id;
   const sub = interaction.options.getSubcommand();
-  const groupName = interaction.options.getString("group", true);
-  const r = resolveGroup(guildId, groupName, userId);
+  const groupName = interaction.options.getString("group");
+  const r = resolveGroupOrPersonal(guildId, groupName, userId);
   if (!r) {
     await interaction.reply({ content: `Group **${groupName}** not found.`, ephemeral: true });
     return;
   }
+  const isPersonal = r.group.is_personal === 1;
+  const displayName = isPersonal ? "your personal list" : r.group.name;
 
   if (sub === "list") {
-    if (ensure(r, "member")) {
+    if (!isPersonal && ensure(r, "member")) {
       await interaction.reply({ content: `You're not a member of **${r.group.name}**.`, ephemeral: true });
       return;
     }
     const shows = watchingRepo.listForGroup(r.group.id);
     if (!shows.length) {
-      await interaction.reply({ content: `**${r.group.name}** isn't watching anything yet.`, ephemeral: true });
+      await interaction.reply({ content: `**${displayName}** isn't watching anything yet.`, ephemeral: true });
       return;
     }
     const now = Math.floor(Date.now() / 1000);
@@ -90,14 +92,17 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
       const tagText = s.tag_on_reminder ? " 🔔" : "";
       return `• **${s.title}**${tagText} — ${s.status}${nextText}${backlogText}`;
     });
-    const embed = new EmbedBuilder().setTitle(`Watching — ${r.group.name}`).setDescription(lines.join("\n"));
+    const title = isPersonal ? "Your Watchlist" : `Watching — ${r.group.name}`;
+    const embed = new EmbedBuilder().setTitle(title).setDescription(lines.join("\n"));
     await interaction.reply({ embeds: [embed] });
     return;
   }
 
-  // mutating subcommands need edit perms
-  const err = ensure(r, "editor");
-  if (err) return void interaction.reply({ content: err, ephemeral: true });
+  // mutating subcommands need edit perms (personal groups always pass)
+  if (!isPersonal) {
+    const err = ensure(r, "editor");
+    if (err) return void interaction.reply({ content: err, ephemeral: true });
+  }
 
   if (sub === "add") {
     const mediaIdRaw = interaction.options.getString("show", true);
@@ -108,12 +113,14 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
     }
     await interaction.deferReply({ ephemeral: true });
     try {
-      const title = await seedShowForGroup(r.group.id, mediaId);
+      const showTitle = await seedShowForGroup(r.group.id, mediaId);
       const g = groupsRepo.byId(r.group.id);
-      const channelHint = g?.notification_channel_id
-        ? `Reminders will post in <#${g.notification_channel_id}>.`
-        : "Set a notification channel with `/group set-channel` to receive reminders.";
-      await interaction.editReply(`Added **${title}** to **${r.group.name}**. ${channelHint}`);
+      const channelHint = isPersonal
+        ? "Reminders will be sent via DM."
+        : g?.notification_channel_id
+          ? `Reminders will post in <#${g.notification_channel_id}>.`
+          : "Set a notification channel with `/group set-channel` to receive reminders.";
+      await interaction.editReply(`Added **${showTitle}** to **${displayName}**. ${channelHint}`);
     } catch (e) {
       console.error(e);
       await interaction.editReply("Failed to fetch show details from AniList.");
@@ -122,7 +129,7 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
   }
 
   if (sub === "add-many") {
-    await startAddMany(interaction, r.group.id, r.group.name);
+    await startAddMany(interaction, r.group.id, displayName);
     return;
   }
 
@@ -135,7 +142,7 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
     const existing = watchingRepo.get(r.group.id, mediaId);
     watchingRepo.remove(r.group.id, mediaId);
     await interaction.reply({
-      content: existing ? `Removed **${existing.title}** from **${r.group.name}**.` : "Nothing to remove.",
+      content: existing ? `Removed **${existing.title}** from **${displayName}**.` : "Nothing to remove.",
       ephemeral: true,
     });
     return;
@@ -191,10 +198,10 @@ async function autocomplete(interaction: AutocompleteInteraction): Promise<void>
       return;
     }
     // remove / tag-on-reminder: pull from the group's watching list
-    const groupName = interaction.options.getString("group");
+    const acGroupName = interaction.options.getString("group");
     const guildId = interaction.guildId;
-    if (!groupName || !guildId) return interaction.respond([]);
-    const r = resolveGroup(guildId, groupName, interaction.user.id);
+    if (!guildId) return interaction.respond([]);
+    const r = resolveGroupOrPersonal(guildId, acGroupName, interaction.user.id);
     if (!r) return interaction.respond([]);
     const shows = watchingRepo.listForGroup(r.group.id);
     const filtered = shows
