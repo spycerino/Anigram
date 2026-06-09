@@ -10,6 +10,7 @@ import { episodesRepo } from "../../db/repos/episodes.js";
 import { searchMediaInCurrentSeason, displayTitle } from "../../anilist/seasonShows.js";
 import { seedShowForGroup } from "../../services/watchSeed.js";
 import { groupsRepo } from "../../db/repos/groups.js";
+import { startAddMany } from "../components/addMany.js";
 
 const data = new SlashCommandBuilder()
   .setName("watch")
@@ -23,6 +24,12 @@ const data = new SlashCommandBuilder()
       .addStringOption((o) =>
         o.setName("show").setDescription("Show (search current season)").setRequired(true).setAutocomplete(true)
       )
+  )
+  .addSubcommand((s) =>
+    s
+      .setName("add-many")
+      .setDescription("Add multiple shows from the current season at once (edit perm).")
+      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
   )
   .addSubcommand((s) =>
     s
@@ -118,6 +125,11 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
       console.error(e);
       await interaction.editReply("Failed to fetch show details from AniList.");
     }
+    return;
+  }
+
+  if (sub === "add-many") {
+    await startAddMany(interaction, r.group.id, r.group.name);
     return;
   }
 

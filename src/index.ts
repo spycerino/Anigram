@@ -9,6 +9,7 @@ import { startReminderScheduler } from "./services/reminders.js";
 import { startRolloverScheduler } from "./services/rollover.js";
 import { handleBacklogButton } from "./discord/components/backlog.js";
 import { handleSeasonButton } from "./discord/components/season.js";
+import { handleAddManyButton, handleAddManySelect } from "./discord/components/addMany.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +49,12 @@ async function main() {
           await handleBacklogButton(interaction);
         } else if (interaction.customId.startsWith("season:")) {
           await handleSeasonButton(interaction);
+        } else if (interaction.customId.startsWith("addmany:")) {
+          await handleAddManyButton(interaction);
+        }
+      } else if (interaction.isStringSelectMenu()) {
+        if (interaction.customId.startsWith("addmany:")) {
+          await handleAddManySelect(interaction);
         }
       }
     } catch (err) {
