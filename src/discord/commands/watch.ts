@@ -46,6 +46,13 @@ const data = new SlashCommandBuilder()
       .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
       .addStringOption((o) => o.setName("show").setDescription("Show").setRequired(true).setAutocomplete(true))
       .addBooleanOption((o) => o.setName("enabled").setDescription("Enable tagging").setRequired(true))
+  )
+  .addSubcommand((s) =>
+    s
+      .setName("tag-all")
+      .setDescription("Toggle tagging on reminders for every show in the group (edit perm).")
+      .addStringOption((o) => o.setName("group").setDescription("Group").setRequired(true).setAutocomplete(true))
+      .addBooleanOption((o) => o.setName("enabled").setDescription("Enable tagging").setRequired(true))
   );
 
 async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -124,6 +131,21 @@ async function execute(interaction: ChatInputCommandInteraction): Promise<void> 
     watchingRepo.remove(r.group.id, mediaId);
     await interaction.reply({
       content: existing ? `Removed **${existing.title}** from **${r.group.name}**.` : "Nothing to remove.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (sub === "tag-all") {
+    const enabled = interaction.options.getBoolean("enabled", true);
+    const shows = watchingRepo.listForGroup(r.group.id);
+    if (!shows.length) {
+      await interaction.reply({ content: `**${r.group.name}** isn't watching anything yet.`, ephemeral: true });
+      return;
+    }
+    const changed = watchingRepo.setTagOnReminderForGroup(r.group.id, enabled);
+    await interaction.reply({
+      content: `Tagging on reminders for all ${changed} show${changed === 1 ? "" : "s"} in **${r.group.name}** is now ${enabled ? "ON" : "OFF"}.`,
       ephemeral: true,
     });
     return;
